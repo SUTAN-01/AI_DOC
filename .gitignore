@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+
+data/chroma/
+data/app.db
+data/app.db-journal
+
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
