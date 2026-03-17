@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>对话 - RAG AI</title>
+    <link rel="stylesheet" href="/static/app.css"/>
+  </head>
+  <body>
+    <div class="container">
+      <div class="row wrap" style="margin-bottom:14px">
+        <div>
+          <div class="muted">RAG Chat</div>
+          <div style="font-size:20px;font-weight:800"><span class="brand">对话</span></div>
+        </div>
+        <div class="spacer"></div>
+        <div class="row wrap">
+          <a class="btn" href="/docs">API 文档</a>
+          <button class="btn" id="btnNew">新会话</button>
+          <button class="btn danger" id="btnLogout">退出登录</button>
+        </div>
+      </div>
+
+      <div class="layout">
+        <div class="card sidebar">
+          <div class="muted" style="margin-bottom:10px">会话列表</div>
+          <div class="list" id="convList"></div>
+        </div>
+
+        <div class="card main">
+          <div class="messages" id="messages"></div>
+
+          <div class="composer">
+            <textarea class="input" id="question" placeholder="输入你的问题（将基于本地文档检索后回答）"></textarea>
+            <button class="btn primary" id="btnSend" style="min-width:110px">发送</button>
+          </div>
+          <div class="toast" id="msg" style="display:none"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const token = localStorage.getItem("rag_token");
+      if (!token) window.location.href = "/login";
+
+      const headers = () => ({
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + token,
+      });
+
+      function showMsg(text, isError) {
+        const msg = document.getElementById("msg");
+        msg.style.display = "block";
+        msg.className = "toast " + (isError ? "error" : "ok");
+        msg.textContent = text;
+      }
+
+      function esc(s) {
+        return (s || "").replace(/[&<>\"']/g, (c) => ({
+          "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+        }[c]));
+      }
+
+      let activeConvId = null;
+
+      function renderBubble(role, content, sources) {
+        const wrap = document.createElement("div");
+        wrap.className = "bubble " + (role === "user" ? "user" : "assistant");
+        wrap.innerText = content || "";
+
+        if (role === "assistant" && sources && sources.length) {
+          const src = document.createElement("div");
+          src.className = "sources";
+          src.innerHTML = "<div style='margin-bottom:6px'>引用片段（Top " + sources.length + "）：</div>" +
+            sources.map((s, i) => {
+              const loc = (s.source || "") + (s.page !== null && s.page !== undefined ? (" (page " + s.page + ")") : "");
+              return "<div style='margin-bottom:6px'><span class='mono'>["+(i+1)+"]</span> " +
+                "<span>" + esc(loc) + "</span><div style='margin-top:4px'>" + esc(s.snippet || "") + "</div></div>";
+            }).join("");
+          wrap.appendChild(src);
+        }
+        return wrap;
+      }
+
+      async function loadConversations() {
+        const resp = await fetch("/chat/conversations", {headers: headers()});
+        const data = await resp.json().catch(() => []);
+        if (!resp.ok) {
+          if (resp.status === 401) return (window.location.href = "/login");
+          throw new Error(data.detail || "加载会话失败");
+        }
+        const list = document.getElementById("convList");
+        list.innerHTML = "";
+        if (!data.length) {
+          const empty = document.createElement("div");
+          empty.className = "muted";
+          empty.textContent = "暂无会话。点击“新会话”开始。";
+          list.appendChild(empty);
+          return;
+        }
+        data.forEach((c) => {
+          const div = document.createElement("div");
+          div.className = "item" + (String(c.id) === String(activeConvId) ? " active" : "");
+          div.textContent = c.title || ("Conversation " + c.id);
+          div.onclick = async () => {
+            activeConvId = c.id;
+            await loadConversations();
+            await loadMessages(c.id);
+          };
+          list.appendChild(div);
+        });
+      }
+
+      async function loadMessages(convId) {
+        const resp = await fetch("/chat/conversations/" + convId, {headers: headers()});
+        const data = await resp.json().catch(() => []);
+        if (!resp.ok) throw new Error(data.detail || "加载消息失败");
+        const box = document.getElementById("messages");
+        box.innerHTML = "";
+        data.forEach((m) => {
+          box.appendChild(renderBubble(m.role, m.content));
+        });
+        box.scrollTop = box.scrollHeight;
+      }
+
+      async function sendQuestion() {
+        const qEl = document.getElementById("question");
+        const q = qEl.value.trim();
+        if (!q) return;
+
+        const btn = document.getElementById("btnSend");
+        btn.disabled = true;
+        showMsg("正在检索文档并生成回答…", false);
+
+        const box = document.getElementById("messages");
+        box.appendChild(renderBubble("user", q));
+        box.scrollTop = box.scrollHeight;
+        qEl.value = "";
+
+        try {
+          const resp = await fetch("/chat/ask", {
+            method: "POST",
+            headers: headers(),
+            body: JSON.stringify({question: q, conversation_id: activeConvId})
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok) throw new Error(data.detail || "提问失败");
+
+          activeConvId = data.conversation_id;
+          box.appendChild(renderBubble("assistant", data.answer || "", data.sources || []));
+          box.scrollTop = box.scrollHeight;
+          await loadConversations();
+        } catch (e) {
+          showMsg(String(e.message || e), true);
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      document.getElementById("btnSend").addEventListener("click", sendQuestion);
+      document.getElementById("question").addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          sendQuestion();
+        }
+      });
+      document.getElementById("btnNew").addEventListener("click", async () => {
+        activeConvId = null;
+        document.getElementById("messages").innerHTML = "";
+        await loadConversations();
+        showMsg("已开始新会话。", false);
+      });
+      document.getElementById("btnLogout").addEventListener("click", () => {
+        localStorage.removeItem("rag_token");
+        window.location.href = "/login";
+      });
+
+      (async function init() {
+        try {
+          await loadConversations();
+        } catch (e) {
+          showMsg(String(e.message || e), true);
+        }
+      })();
+    </script>
+  </body>
+</html>

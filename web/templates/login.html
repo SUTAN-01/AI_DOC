@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>登录 - RAG AI</title>
+    <link rel="stylesheet" href="/static/app.css"/>
+  </head>
+  <body>
+    <div class="container">
+      <div class="card pad" style="max-width:520px;margin:0 auto">
+        <div class="row">
+          <div>
+            <div class="muted">欢迎回来</div>
+            <h2 style="margin:6px 0 0"><span class="brand">登录</span></h2>
+          </div>
+          <div class="spacer"></div>
+          <a class="btn" href="/">首页</a>
+        </div>
+
+        <div style="margin-top:16px">
+          <div class="label">用户名</div>
+          <input class="input" id="username" placeholder="例如 alice" autocomplete="username"/>
+        </div>
+        <div style="margin-top:12px">
+          <div class="label">密码</div>
+          <input class="input" id="password" type="password" placeholder="至少 6 位" autocomplete="current-password"/>
+        </div>
+
+        <div class="row" style="margin-top:16px">
+          <button class="btn primary" id="btnLogin">登录</button>
+          <div class="spacer"></div>
+          <a class="btn" href="/register">没有账号？去注册</a>
+        </div>
+
+        <div class="toast" id="msg" style="display:none"></div>
+      </div>
+    </div>
+
+    <script>
+      function showMsg(text, isError) {
+        const msg = document.getElementById("msg");
+        msg.style.display = "block";
+        msg.className = "toast " + (isError ? "error" : "ok");
+        msg.textContent = text;
+      }
+
+      async function login() {
+        const u = document.getElementById("username").value.trim();
+        const p = document.getElementById("password").value;
+        if (!u || !p) return showMsg("请输入用户名和密码。", true);
+
+        const btn = document.getElementById("btnLogin");
+        btn.disabled = true;
+        try {
+          const resp = await fetch("/auth/login", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({username: u, password: p})
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok) {
+            return showMsg(data.detail || "登录失败。", true);
+          }
+          localStorage.setItem("rag_token", data.access_token);
+          showMsg("登录成功，正在跳转…", false);
+          setTimeout(() => (window.location.href = "/chat"), 350);
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      document.getElementById("btnLogin").addEventListener("click", login);
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") login();
+      });
+    </script>
+  </body>
+</html>

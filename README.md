@@ -27,6 +27,7 @@ copy .env.example .env
 编辑 `.env`，至少设置：
 
 - `OPENAI_API_KEY=...`
+- `OPENAI_BASE_URL=https://api.gptsapi.net/v1`（如需使用 OpenAI 兼容网关；默认已内置该值）
 
 ## 2) 放入本地文档
 

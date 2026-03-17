@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>RAG AI</title>
+    <link rel="stylesheet" href="/static/app.css"/>
+  </head>
+  <body>
+    <div class="container">
+      <div class="card pad">
+        <div class="row wrap">
+          <div>
+            <div class="muted">LangChain + OpenAI + MCP + FastAPI</div>
+            <h1 style="margin:6px 0 0; font-size:30px"><span class="brand">RAG AI</span></h1>
+            <div class="muted" style="margin-top:10px; max-width:760px">
+              登录后即可基于本地文档进行问答；每个账号的会话相互隔离。
+            </div>
+          </div>
+          <div class="spacer"></div>
+          <div class="row wrap">
+            <a class="btn" href="/docs">API 文档</a>
+            <a class="btn" href="/register">注册</a>
+            <a class="btn primary" href="/login">登录</a>
+            <a class="btn primary" href="/chat">进入对话</a>
+          </div>
+        </div>
+
+        <div class="toast" id="status" style="display:none"></div>
+
+        <div style="margin-top:18px" class="grid2">
+          <div class="card pad">
+            <div class="muted">快速开始</div>
+            <div style="margin-top:10px" class="mono">
+              1) python -m scripts.ingest<br/>
+              2) uvicorn app.main:app --host 0.0.0.0 --port 8000<br/>
+              3) 打开本页面进行登录与对话
+            </div>
+          </div>
+          <div class="card pad">
+            <div class="muted">提示</div>
+            <div style="margin-top:10px">
+              需要在 <span class="mono">.env</span> 中设置 <span class="mono">OPENAI_API_KEY</span> 和 <span class="mono">OPENAI_BASE_URL</span>。
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        const token = localStorage.getItem("rag_token");
+        const status = document.getElementById("status");
+        if (token) {
+          status.style.display = "block";
+          status.className = "toast ok";
+          status.textContent = "检测到已登录的 Token，可以直接进入对话页。";
+        }
+      })();
+    </script>
+  </body>
+</html>

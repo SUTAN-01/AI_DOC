@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>注册 - RAG AI</title>
+    <link rel="stylesheet" href="/static/app.css"/>
+  </head>
+  <body>
+    <div class="container">
+      <div class="card pad" style="max-width:560px;margin:0 auto">
+        <div class="row">
+          <div>
+            <div class="muted">创建你的账号</div>
+            <h2 style="margin:6px 0 0"><span class="brand">注册</span></h2>
+          </div>
+          <div class="spacer"></div>
+          <a class="btn" href="/">首页</a>
+        </div>
+
+        <div style="margin-top:16px">
+          <div class="label">用户名（3-64）</div>
+          <input class="input" id="username" placeholder="例如 alice" autocomplete="username"/>
+        </div>
+        <div style="margin-top:12px">
+          <div class="label">密码（至少 6 位）</div>
+          <input class="input" id="password" type="password" placeholder="至少 6 位" autocomplete="new-password"/>
+        </div>
+
+        <div class="row" style="margin-top:16px">
+          <button class="btn primary" id="btnRegister">注册并登录</button>
+          <div class="spacer"></div>
+          <a class="btn" href="/login">已有账号？去登录</a>
+        </div>
+
+        <div class="toast" id="msg" style="display:none"></div>
+      </div>
+    </div>
+
+    <script>
+      function showMsg(text, isError) {
+        const msg = document.getElementById("msg");
+        msg.style.display = "block";
+        msg.className = "toast " + (isError ? "error" : "ok");
+        msg.textContent = text;
+      }
+
+      async function registerAndLogin() {
+        const u = document.getElementById("username").value.trim();
+        const p = document.getElementById("password").value;
+        if (!u || !p) return showMsg("请输入用户名和密码。", true);
+
+        const btn = document.getElementById("btnRegister");
+        btn.disabled = true;
+        try {
+          const r1 = await fetch("/auth/register", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({username: u, password: p})
+          });
+          const d1 = await r1.json().catch(() => ({}));
+          if (!r1.ok) return showMsg(d1.detail || "注册失败。", true);
+
+          const r2 = await fetch("/auth/login", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({username: u, password: p})
+          });
+          const d2 = await r2.json().catch(() => ({}));
+          if (!r2.ok) return showMsg(d2.detail || "登录失败。", true);
+
+          localStorage.setItem("rag_token", d2.access_token);
+          showMsg("注册成功，正在进入对话…", false);
+          setTimeout(() => (window.location.href = "/chat"), 350);
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      document.getElementById("btnRegister").addEventListener("click", registerAndLogin);
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") registerAndLogin();
+      });
+    </script>
+  </body>
+</html>
