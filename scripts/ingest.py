@@ -33,6 +33,39 @@ def _load_pdfs(docs_dir: str):
     return docs
 
 
+def _apply_doc_name_metadata(docs: list, docs_root: Path) -> None:
+    docs_root = docs_root.resolve()
+    for d in docs:
+        try:
+            if not getattr(d, "metadata", None):
+                continue
+            if d.metadata.get("doc_name"):
+                continue
+            src = d.metadata.get("source")
+            if not src:
+                continue
+            src_path = Path(str(src))
+            try:
+                src_abs = src_path.resolve()
+            except Exception:
+                src_abs = src_path
+
+            doc_name = None
+            try:
+                if src_abs.is_absolute() and docs_root in src_abs.parents:
+                    doc_name = str(src_abs.relative_to(docs_root)).replace("\\", "/")
+            except Exception:
+                doc_name = None
+
+            if not doc_name and not src_path.is_absolute():
+                doc_name = str(src_path).replace("\\", "/")
+
+            if doc_name:
+                d.metadata["doc_name"] = doc_name
+        except Exception:
+            continue
+
+
 def main() -> None:
     os.makedirs(settings.docs_dir, exist_ok=True)
     os.makedirs(settings.chroma_dir, exist_ok=True)
@@ -42,6 +75,7 @@ def main() -> None:
     loader = _build_loader(settings.docs_dir)
     docs = loader.load()
     docs.extend(_load_pdfs(settings.docs_dir))
+    _apply_doc_name_metadata(docs, Path(settings.docs_dir))
 
     if not docs:
         print(f"No documents found under: {settings.docs_dir}")

@@ -46,6 +46,14 @@ def _set_status(**kwargs) -> None:
         setattr(_status, k, v)
 
 
+def _normalize_doc_name(name: str) -> str:
+    s = (name or '').strip()
+    s = s.lstrip('/').replace('\\', '/')
+    while s.startswith('./'):
+        s = s[2:]
+    return s
+
+
 def list_doc_files() -> List[Dict]:
     root = Path(settings.docs_dir)
     if not root.exists():
@@ -98,6 +106,79 @@ def save_upload(file: UploadFile) -> str:
     return str(target)
 
 
+def _safe_doc_path(name: str) -> Path:
+    norm = _normalize_doc_name(name)
+    if not norm:
+        raise ValueError('Missing file name')
+
+    root = Path(settings.docs_dir).resolve()
+    p = (root / norm).resolve()
+    if p != root and root not in p.parents:
+        raise ValueError('Invalid file path')
+    return p
+
+
+def _try_delete_vectors(name: str, abs_path: Path) -> None:
+    chroma_dir = Path(settings.chroma_dir)
+    if not chroma_dir.exists():
+        return
+    try:
+        if not any(chroma_dir.iterdir()):
+            return
+    except Exception:
+        return
+
+    # Use Chroma directly; deleting should not require embeddings / OPENAI_API_KEY.
+    try:
+        from chromadb import PersistentClient
+        from chromadb.config import Settings as ChromaClientSettings
+
+        client = PersistentClient(path=str(chroma_dir), settings=ChromaClientSettings(anonymized_telemetry=False))
+        try:
+            col = client.get_collection('docs')
+        except Exception:
+            return
+
+        norm_name = _normalize_doc_name(name)
+        abs_str = str(abs_path)
+        abs_slash = abs_str.replace('\\', '/')
+        candidates = [
+            {'doc_name': norm_name},
+            {'source': abs_str},
+            {'source': abs_slash},
+        ]
+        for where in candidates:
+            try:
+                col.delete(where=where)
+            except Exception:
+                pass
+    except Exception:
+        return
+
+
+def delete_doc_file(name: str) -> None:
+    p = _safe_doc_path(name)
+    if not p.exists() or not p.is_file():
+        raise ValueError('File not found')
+    if p.suffix.lower() not in ALLOWED_SUFFIXES:
+        raise ValueError(f'Unsupported file type: {p.suffix.lower()}')
+
+    root = Path(settings.docs_dir).resolve()
+    p.unlink()
+
+    parent = p.parent
+    while parent != root:
+        try:
+            if any(parent.iterdir()):
+                break
+            parent.rmdir()
+        except Exception:
+            break
+        parent = parent.parent
+
+    _try_delete_vectors(name=name, abs_path=p)
+
+
 def _load_text_docs(docs_dir: str, glob: str):
     loader = DirectoryLoader(
         docs_dir,
@@ -126,6 +207,39 @@ def _reset_chroma_dir() -> None:
     p.mkdir(parents=True, exist_ok=True)
 
 
+def _apply_doc_name_metadata(docs: list) -> None:
+    docs_root = Path(settings.docs_dir).resolve()
+    for d in docs:
+        try:
+            if not getattr(d, 'metadata', None):
+                continue
+            if d.metadata.get('doc_name'):
+                continue
+            src = d.metadata.get('source')
+            if not src:
+                continue
+            src_path = Path(str(src))
+            try:
+                src_abs = src_path.resolve()
+            except Exception:
+                src_abs = src_path
+
+            doc_name = None
+            try:
+                if src_abs.is_absolute() and docs_root in src_abs.parents:
+                    doc_name = str(src_abs.relative_to(docs_root)).replace('\\', '/')
+            except Exception:
+                doc_name = None
+
+            if not doc_name and not src_path.is_absolute():
+                doc_name = str(src_path).replace('\\', '/')
+
+            if doc_name:
+                d.metadata['doc_name'] = doc_name
+        except Exception:
+            continue
+
+
 def build_vector_db() -> BuildStatus:
     if not _build_lock.acquire(blocking=False):
         raise RuntimeError('Build already running')
@@ -147,6 +261,7 @@ def build_vector_db() -> BuildStatus:
         docs.extend(_load_text_docs(settings.docs_dir, '**/*.txt'))
         docs.extend(_load_text_docs(settings.docs_dir, '**/*.md'))
         docs.extend(_load_pdfs(settings.docs_dir))
+        _apply_doc_name_metadata(docs)
 
         files = len(list_doc_files())
         if not docs:
