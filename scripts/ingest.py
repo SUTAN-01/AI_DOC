@@ -36,6 +36,8 @@ def _load_pdfs(docs_dir: str):
 def main() -> None:
     os.makedirs(settings.docs_dir, exist_ok=True)
     os.makedirs(settings.chroma_dir, exist_ok=True)
+    print(f"docs_dir={settings.docs_dir}")
+    print(f"chroma_dir={settings.chroma_dir}")
 
     loader = _build_loader(settings.docs_dir)
     docs = loader.load()
@@ -50,10 +52,11 @@ def main() -> None:
 
     vs = get_vectorstore()
     vs.add_documents(splits)
-    vs.persist()
+    # Chroma 0.4+ auto-persists; no need to call persist().
 
     print(f"Ingested {len(splits)} chunks into: {settings.chroma_dir}")
 
 
 if __name__ == "__main__":
     main()
+
